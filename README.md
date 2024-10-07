@@ -1,6 +1,6 @@
 # bunline
 
-bunline is a reimplementation of LINE Notify API (which has been [deprecated](https://notify-bot.line.me/closing-announce) and set to sunset on March 31, 2025) on top of LINE’s Messaging API using the Bun JavaScript runtime. This project aims to provide a seamless transition for users from LINE Notify to the LINE Messaging API.
+bunline is a reimplementation of LINE Notify API (which has been [deprecated](https://notify-bot.line.me/closing-announce) and set to sunset on March 31, 2025) on top of LINE’s Messaging API using the Bun JavaScript runtime. This project aims to be a drop-in replacement for the LINE Notify API and provide a seamless transition for users from LINE Notify to the LINE Messaging API.
 
 ## Features
 
@@ -20,27 +20,35 @@ For detailed instructions on obtaining the Channel Access Token and User/Group I
 
 ## Setup
 
-1. Clone the repository
+Create a `config.json` file in the project root with the following structure:
 
-2. Create a `config.json` file in the project root with the following structure:
+```json
+{
+  "accessTokens": {
+    "<your-access-token>": {
+      "channelAccessToken": "<your-channel-access-token>",
+      "to": "<user-id-or-group-id>"
+    }
+  }
+}
+```
 
-   ```json
-   {
-     "accessTokens": {
-       "<your-access-token>": {
-         "channelAccessToken": "<your-channel-access-token>",
-         "to": "<user-id-or-group-id>"
-       }
-     }
-   }
-   ```
+## Usage with prebuilt Docker image
 
-## Usage
+To run the server using Docker:
+
+```sh
+docker run -ti --rm -v $PWD/config.json:/app/config.json --init -p 3717:3717 ghcr.io/dtinth/bunline:main
+```
+
+Instead of using the `config.json` file, you can also encode `config.json` as a base64 string and pass it as the `CONFIG_BASE64` environment variable.
+
+## Usage with local clone
 
 Run the server:
 
-```
-bun run index.ts
+```sh
+bun start
 ```
 
 The server will start on port 3717 by default. You can change the port by setting the `PORT` environment variable.
