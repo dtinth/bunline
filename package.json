@@ -1,0 +1,13 @@
+{
+  "name": "bunline",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@tsconfig/bun": "^1.0.7",
+    "@types/bun": "latest",
+    "@types/node": "^22.7.4"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
