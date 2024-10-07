@@ -1,4 +1,6 @@
-const config = (await Bun.file("config.json").json()) as {
+const config = (await Bun.file(
+  Bun.env["CONFIG_PATH"] || "config.json"
+).json()) as {
   accessTokens: Record<
     string,
     {
@@ -13,7 +15,9 @@ const accessMap = new Map<string, (typeof config.accessTokens)[string]>(
   Object.entries(config.accessTokens)
 );
 
-Bun.serve({
+const LINE_API_BASE = Bun.env["LINE_API_BASE"] || "https://api.line.me";
+
+const server = Bun.serve({
   port: +Bun.env["PORT"]! || 3717,
   async fetch(request) {
     const url = new URL(request.url);
@@ -59,28 +63,87 @@ Bun.serve({
         );
       }
 
+      const imageThumbnail = formData.get("imageThumbnail");
+      const imageFullsize = formData.get("imageFullsize");
+      const imageFile = formData.get("imageFile") as File | null;
+      const stickerPackageId = formData.get("stickerPackageId");
+      const stickerId = formData.get("stickerId");
+      const notificationDisabled =
+        formData.get("notificationDisabled") === "true";
+      const prefix = tokenConfig.messagePrefix || "";
+
+      const messages: any[] = [
+        { type: "text", text: prefix + message.toString() },
+      ];
+
+      if (imageFile) {
+        return new Response(
+          JSON.stringify({
+            status: 500,
+            message: "Image upload has not been implemeted yet",
+          }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      if (imageThumbnail && imageFullsize) {
+        messages.push({
+          type: "image",
+          originalContentUrl: imageFullsize.toString(),
+          previewImageUrl: imageThumbnail.toString(),
+        });
+      }
+
+      if (stickerPackageId && stickerId) {
+        messages.push({
+          type: "sticker",
+          packageId: stickerPackageId.toString(),
+          stickerId: stickerId.toString(),
+        });
+      }
+
+      const messagingApiBody: any = {
+        to: tokenConfig.to,
+        messages: messages,
+      };
+
+      if (notificationDisabled) {
+        messagingApiBody.notificationDisabled = true;
+      }
+
       // Send message to Messaging API
       const messagingApiResponse = await fetch(
-        "https://api.line.me/v2/bot/message/push",
+        `${LINE_API_BASE}/v2/bot/message/push`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${tokenConfig.channelAccessToken}`,
           },
-          body: JSON.stringify({
-            to: tokenConfig.to,
-            messages: [{ type: "text", text: message.toString() }],
-          }),
+          body: JSON.stringify(messagingApiBody),
         }
       );
 
       if (messagingApiResponse.ok) {
+        const rateLimitHeaders = {
+          "X-RateLimit-Limit": "1000",
+          "X-RateLimit-Remaining": "1000",
+          "X-RateLimit-Reset": `${Math.floor(Date.now() / 1000) + 60}`,
+        };
+
         return new Response(JSON.stringify({ status: 200, message: "ok" }), {
           status: 200,
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...rateLimitHeaders,
+          },
         });
       } else {
+        console.error(`Unable to send message: ${messagingApiResponse.status}`);
+        console.error(await messagingApiResponse.text());
         return new Response(
           JSON.stringify({ status: 500, message: "Failed to send message" }),
           {
@@ -94,3 +157,5 @@ Bun.serve({
     return new Response("Not Found", { status: 404 });
   },
 });
+
+console.log(`Server started on port ${server.port}`);
