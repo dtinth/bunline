@@ -1,6 +1,16 @@
-const config = (await Bun.file(
-  Bun.env["CONFIG_PATH"] || "config.json"
-).json()) as {
+const config = await(async () => {
+  if (Bun.env["CONFIG_BASE64"]) {
+    console.log(
+      'Using configuration from "CONFIG_BASE64" environment variable'
+    );
+    return JSON.parse(
+      Buffer.from(Bun.env["CONFIG_BASE64"], "base64").toString("utf-8")
+    );
+  }
+  const configPath = Bun.env["CONFIG_PATH"] || "config.json";
+  console.log(`Using configuration from "${configPath}"`);
+  return await Bun.file(configPath).json();
+})() as {
   accessTokens: Record<
     string,
     {
