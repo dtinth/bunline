@@ -1,16 +1,6 @@
-const config = await(async () => {
-  if (Bun.env["CONFIG_BASE64"]) {
-    console.log(
-      'Using configuration from "CONFIG_BASE64" environment variable'
-    );
-    return JSON.parse(
-      Buffer.from(Bun.env["CONFIG_BASE64"], "base64").toString("utf-8")
-    );
-  }
-  const configPath = Bun.env["CONFIG_PATH"] || "config.json";
-  console.log(`Using configuration from "${configPath}"`);
-  return await Bun.file(configPath).json();
-})() as {
+const LINE_API_BASE = Bun.env["LINE_API_BASE"] || "https://api.line.me";
+
+interface Config {
   accessTokens: Record<
     string,
     {
@@ -19,13 +9,67 @@ const config = await(async () => {
       messagePrefix?: string;
     }
   >;
-};
+}
 
-const accessMap = new Map<string, (typeof config.accessTokens)[string]>(
-  Object.entries(config.accessTokens)
-);
+interface CredentialsMapper {
+  mapCredentials(accessToken: string): Config["accessTokens"][string] | null;
+}
 
-const LINE_API_BASE = Bun.env["LINE_API_BASE"] || "https://api.line.me";
+class JSONCredentialsMapper implements CredentialsMapper {
+  accessMap: Map<string, Config["accessTokens"][string]>;
+  constructor(config: Config) {
+    this.accessMap = new Map(Object.entries(config.accessTokens));
+  }
+  mapCredentials(accessToken: string) {
+    return this.accessMap.get(accessToken) || null;
+  }
+}
+
+class ZeroConfigurationCredentialsMapper implements CredentialsMapper {
+  mapCredentials(accessToken: string) {
+    const [channelAccessToken, to] = accessToken.split("|");
+    if (!channelAccessToken || !to) {
+      return null;
+    }
+    return {
+      channelAccessToken,
+      to,
+    };
+  }
+}
+
+const { credentialsMapper } = await(
+  async (): Promise<{
+    credentialsMapper: CredentialsMapper;
+  }> => {
+    const configPath = Bun.env["CONFIG_PATH"] || "config.json";
+    if (await Bun.file(configPath).exists()) {
+      console.log(`Using configuration from "${configPath}"`);
+      return {
+        credentialsMapper: new JSONCredentialsMapper(
+          await Bun.file(configPath).json()
+        ),
+      };
+    }
+    if (Bun.env["CONFIG_BASE64"]) {
+      console.log(
+        'Using configuration from "CONFIG_BASE64" environment variable'
+      );
+      const config = JSON.parse(
+        Buffer.from(Bun.env["CONFIG_BASE64"], "base64").toString("utf-8")
+      );
+      return {
+        credentialsMapper: new JSONCredentialsMapper(config),
+      };
+    }
+    console.log(
+      `Using zero-configuration mode as no configuration was found either at "${configPath}" or in the "CONFIG_BASE64" environment variable.`
+    );
+    return {
+      credentialsMapper: new ZeroConfigurationCredentialsMapper(),
+    };
+  }
+)();
 
 const server = Bun.serve({
   port: +Bun.env["PORT"]! || 3717,
@@ -48,7 +92,7 @@ const server = Bun.serve({
       }
 
       const accessToken = authHeader.split(" ")[1];
-      const tokenConfig = accessMap.get(accessToken);
+      const tokenConfig = credentialsMapper.mapCredentials(accessToken);
 
       if (!tokenConfig) {
         return new Response(
@@ -168,4 +212,4 @@ const server = Bun.serve({
   },
 });
 
-console.log(`Server started on port ${server.port}`);
+console.log(`Server started on port ${server.port}.`);
